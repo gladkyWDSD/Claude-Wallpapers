@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Clawd Clock</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0d0a09; overflow: hidden; }
+  svg { display: block; width: 100vw; height: 100vh; }
+
+  .eye { transform-box: fill-box; transform-origin: center; animation: blink 5s infinite; }
+  @keyframes blink { 0%, 95%, 100% { transform: scaleY(1); } 97% { transform: scaleY(0.1); } }
+
+  .bob { animation: bob 2.4s steps(1) infinite; }
+  @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+
+  .star { animation: twinkle 3.2s ease-in-out infinite; }
+  @keyframes twinkle { 0%, 100% { opacity: .15; } 50% { opacity: .7; } }
+
+  #colon.off rect { fill: #2b1a13; filter: none; }
+
+  @media (prefers-reduced-motion: reduce) { .eye, .bob, .star { animation: none; } }
+</style>
+</head>
+<body>
+<svg viewBox="0 0 1080 2400" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d0a09"/>
+      <stop offset=".45" stop-color="#1c1512"/>
+      <stop offset="1" stop-color="#0d0a09"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="540" cy="1000" r="760" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d97757" stop-opacity=".22"/>
+      <stop offset=".5" stop-color="#d97757" stop-opacity=".07"/>
+      <stop offset="1" stop-color="#d97757" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="9" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <pattern id="scan" width="8" height="8" patternUnits="userSpaceOnUse">
+      <rect width="8" height="3" fill="#000" opacity=".28"/>
+    </pattern>
+  </defs>
+
+  <rect width="1080" height="2400" fill="url(#bg)"/>
+  <rect width="1080" height="2400" fill="url(#halo)"/>
+  <g id="stars" fill="#f0eee6"></g>
+
+  <!-- ground shadow -->
+  <rect x="230" y="1792" width="620" height="16" fill="#000" opacity=".45"/>
+  <rect x="270" y="1808" width="540" height="10" fill="#000" opacity=".25"/>
+
+  <g class="bob">
+    <!-- clock: buttons -->
+    <rect x="250" y="752" width="100" height="28" fill="#d97757"/>
+    <rect x="250" y="752" width="100" height="8" fill="#eb9a7a"/>
+    <rect x="730" y="752" width="100" height="28" fill="#5a514a"/>
+    <rect x="730" y="752" width="100" height="8" fill="#6e645c"/>
+
+    <!-- clock: casing (stepped pixel corners) -->
+    <polygon fill="#3a332e" points="130,780 950,780 950,800 970,800 970,820 990,820 990,1180 970,1180 970,1200 950,1200 950,1220 130,1220 130,1200 110,1200 110,1180 90,1180 90,820 110,820 110,800 130,800"/>
+    <rect x="130" y="780" width="820" height="10" fill="#4d4540"/>
+    <rect x="130" y="1210" width="820" height="10" fill="#26201c"/>
+
+    <!-- clock: screen -->
+    <polygon fill="#140e0b" points="150,830 930,830 930,840 940,840 940,1110 930,1110 930,1120 150,1120 150,1110 140,1110 140,840 150,840"/>
+    <g id="ghost" fill="#2b1a13"></g>
+    <g id="lit" fill="#ff9a6c" filter="url(#glow)"></g>
+    <g id="colon" fill="#ff9a6c" filter="url(#glow)">
+      <rect x="525" y="915" width="30" height="30"/>
+      <rect x="525" y="1005" width="30" height="30"/>
+    </g>
+    <rect x="140" y="830" width="800" height="290" fill="url(#scan)"/>
+    <rect x="170" y="848" width="120" height="8" fill="#fff" opacity=".05"/>
+    <rect x="170" y="856" width="8" height="40" fill="#fff" opacity=".05"/>
+
+    <!-- clock: date + seconds strip -->
+    <g id="info"></g>
+
+    <!-- Clawd -->
+    <g id="clawd">
+      <!-- arms -->
+      <rect x="190" y="1400" width="50" height="50" fill="#d97757"/>
+      <rect x="140" y="1180" width="50" height="270" fill="#d97757"/>
+      <rect x="140" y="1180" width="12" height="270" fill="#e8906f"/>
+      <rect x="840" y="1400" width="50" height="50" fill="#d97757"/>
+      <rect x="890" y="1180" width="50" height="270" fill="#d97757"/>
+      <rect x="928" y="1180" width="12" height="270" fill="#b9603f"/>
+      <!-- legs -->
+      <rect x="290" y="1700" width="50" height="90" fill="#c4694a"/>
+      <rect x="390" y="1700" width="50" height="90" fill="#c4694a"/>
+      <rect x="640" y="1700" width="50" height="90" fill="#c4694a"/>
+      <rect x="740" y="1700" width="50" height="90" fill="#c4694a"/>
+      <!-- body -->
+      <rect x="240" y="1300" width="600" height="400" fill="#d97757"/>
+      <rect x="240" y="1300" width="600" height="25" fill="#ea9877"/>
+      <rect x="240" y="1675" width="600" height="25" fill="#b9603f"/>
+      <!-- eyes -->
+      <rect class="eye" x="340" y="1400" width="50" height="100" fill="#14100e"/>
+      <rect class="eye" x="690" y="1400" width="50" height="100" fill="#14100e"/>
+    </g>
+  </g>
+</svg>
+
+<script>
+const NS = 'http://www.w3.org/2000/svg';
+const rect = (g, x, y, w, h, attrs) => {
+  const r = document.createElementNS(NS, 'rect');
+  r.setAttribute('x', x); r.setAttribute('y', y);
+  r.setAttribute('width', w); r.setAttribute('height', h);
+  for (const k in attrs || {}) r.setAttribute(k, attrs[k]);
+  g.appendChild(r);
+  return r;
+};
+
+// --- seven-segment digits -------------------------------------------------
+const W = 150, H = 240, T = 30, TOP = 855;
+const DIGIT_X = [165, 335, 595, 765];
+const SEG = {
+  a: [T, 0, W - 2 * T, T],
+  b: [W - T, T, T, H / 2 - T - T / 2],
+  c: [W - T, H / 2 + T / 2, T, H / 2 - T - T / 2],
+  d: [T, H - T, W - 2 * T, T],
+  e: [0, H / 2 + T / 2, T, H / 2 - T - T / 2],
+  f: [0, T, T, H / 2 - T - T / 2],
+  g: [T, H / 2 - T / 2, W - 2 * T, T],
+};
+const DIGITS = ['abcdef', 'bc', 'abdeg', 'abcdg', 'bcfg', 'acdfg', 'acdefg', 'abc', 'abcdefg', 'abcdfg'];
+
+const ghost = document.getElementById('ghost');
+const lit = document.getElementById('lit');
+DIGIT_X.forEach(dx => {
+  for (const s in SEG) { const [x, y, w, h] = SEG[s]; rect(ghost, dx + x, TOP + y, w, h); }
+});
+
+// --- 5x5 pixel font for the date strip -----------------------------------
+const FONT = {
+  A: '.###.#...#######...##...#', B: '####.#...#####.#...#####.', C: '.#####....#....#.....####',
+  D: '####.#...##...##...#####.', E: '######....####.#....#####', F: '######....####.#....#....',
+  G: '.#####....#.####...#.####', H: '#...##...#######...##...#', I: '#####..#....#....#..#####',
+  J: '..###...#....#.#..#..##..', L: '#....#....#....#....#####', M: '#...###.###.#.##...##...#',
+  N: '#...###..##.#.##..###...#', O: '.###.#...##...##...#.###.', P: '####.#...#####.#....#....',
+  R: '####.#...#####.#..#.#...#', S: '.#####.....###.....#####.', T: '#####..#....#....#....#..',
+  U: '#...##...##...##...#.###.', V: '#...##...##...#.#.#...#..', W: '#...##...##.#.###.###...#',
+  Y: '#...#.#.#...#....#....#..',
+  0: '.###.#..###.#.###..#.###.', 1: '..#...##....#....#...###.', 2: '####.....#.###.#....#####',
+  3: '####.....#.###.....#####.', 4: '#...##...######....#....#', 5: '######....####.....#####.',
+  6: '.###.#....####.#...#.###.', 7: '#####....#...#...#....#..', 8: '.###.#...#.###.#...#.###.',
+  9: '.###.#...#.####....#.###.', ':': '.......#.........#.......', ' ': '',
+};
+
+function pixText(g, str, x, y, s, color, align) {
+  const width = str.length * 6 * s - s;
+  let cx = align === 'right' ? x - width : x;
+  for (const ch of str) {
+    const glyph = FONT[ch] || '';
+    for (let i = 0; i < glyph.length; i++) {
+      if (glyph[i] === '#') rect(g, cx + (i % 5) * s, y + Math.floor(i / 5) * s, s, s, { fill: color });
+    }
+    cx += 6 * s;
+  }
+}
+
+// --- stars ----------------------------------------------------------------
+const stars = document.getElementById('stars');
+[[90, 260, 8], [240, 420, 6], [470, 190, 10], [700, 330, 6], [930, 220, 8], [860, 520, 6],
+ [150, 640, 6], [990, 690, 10], [60, 1050, 6], [1020, 1420, 8], [40, 1650, 10], [1000, 1900, 6],
+ [180, 2050, 8], [560, 2120, 6], [880, 2200, 10], [330, 2280, 6], [620, 560, 6], [380, 600, 8]]
+  .forEach(([x, y, s], i) => {
+    const g = document.createElementNS(NS, 'g');
+    g.setAttribute('class', 'star');
+    g.style.animationDelay = (-(i * 0.73) % 3.2) + 's';
+    rect(g, x, y, s, s);
+    if (s >= 10) { rect(g, x - s, y, s, s); rect(g, x + s, y, s, s); rect(g, x, y - s, s, s); rect(g, x, y + s, s, s); }
+    stars.appendChild(g);
+  });
+
+// --- clock loop -----------------------------------------------------------
+const DAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+const info = document.getElementById('info');
+const colon = document.getElementById('colon');
+const pad = n => String(n).padStart(2, '0');
+
+function render() {
+  const now = new Date();
+  const hhmm = pad(now.getHours()) + pad(now.getMinutes());
+
+  lit.replaceChildren();
+  [...hhmm].forEach((d, i) => {
+    for (const s of DIGITS[+d]) { const [x, y, w, h] = SEG[s]; rect(lit, DIGIT_X[i] + x, TOP + y, w, h); }
+  });
+  colon.classList.toggle('off', now.getSeconds() % 2 === 1);
+
+  info.replaceChildren();
+  pixText(info, `${DAYS[now.getDay()]} ${pad(now.getDate())} ${MONTHS[now.getMonth()]}`, 220, 1149, 7, '#c9876a');
+  pixText(info, ':' + pad(now.getSeconds()), 860, 1149, 7, '#c9876a', 'right');
+}
+
+function tick() {
+  render();
+  setTimeout(tick, 1000 - (Date.now() % 1000) + 5);
+}
+tick();
+document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
+</script>
+</body>
+</html>
