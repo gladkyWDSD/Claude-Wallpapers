@@ -1,5 +1,7 @@
 package dev.wallpapers.clawdclock;
 
+import android.app.AlarmManager;
+import android.content.SharedPreferences;
 import android.graphics.BlurMaskFilter;
 import android.graphics.Canvas;
 import android.graphics.LinearGradient;
@@ -7,6 +9,7 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RadialGradient;
 import android.graphics.Shader;
+import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -14,6 +17,12 @@ import android.os.SystemClock;
 import android.service.wallpaper.WallpaperService;
 import android.view.SurfaceHolder;
 
+import org.json.JSONObject;
+
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.Calendar;
 import java.util.HashMap;
 import java.util.Map;
@@ -72,15 +81,70 @@ public class ClawdClockWallpaper extends WallpaperService {
                 "3####.....#.###.....#####.", "4#...##...######....#....#", "5######....####.....#####.",
                 "6.###.#....####.#...#.###.", "7#####....#...#...#....#..", "8.###.#...#.###.#...#.###.",
                 "9.###.#...#.####....#.###.", ":.......#.........#.......",
+                "%##..###.#...#...#.###..##", "\u00b0.#...#.#...#..............",
+                "-...........###...........",
         };
         for (String s : f) FONT.put(s.charAt(0), s.substring(1));
     }
+
+    // 9x9 pixel icons for the status chips.
+    private static final String[] SUN = {
+            "Y...Y...Y", ".Y.....Y.", "...YYY...", "..YYYYY..", "Y.YYYYY.Y",
+            "..YYYYY..", "...YYY...", ".Y.....Y.", "Y...Y...Y"};
+    private static final String[] MOON = {
+            "..MMMM...", ".MMM.....", "MMM......", "MMM......", "MMM......",
+            "MMMM....M", ".MMMMMMM.", "..MMMMM..", "........."};
+    private static final String[] PARTLY = {
+            "..Y.Y....", "Y.YYY....", ".YYYYWW..", "YYYWWWWW.", ".YWWWWWWW",
+            "WWWWWWWWW", "WWWWWWWWW", ".WWWWWWW.", "........."};
+    private static final String[] CLOUD = {
+            ".........", "...WWW...", "..WWWWW..", ".WWWWWWW.", "WWWWWWWWW",
+            "WWWWWWWWW", ".WWWWWWW.", ".........", "........."};
+    private static final String[] RAIN = {
+            "...GGG...", "..GGGGG..", ".GGGGGGG.", "GGGGGGGGG", ".GGGGGGG.",
+            ".........", ".B..B..B.", "B..B..B..", "........."};
+    private static final String[] SNOW = {
+            "...WWW...", "..WWWWW..", ".WWWWWWW.", "WWWWWWWWW", ".WWWWWWW.",
+            ".........", "S...S...S", "..S...S..", "S...S...S"};
+    private static final String[] STORM = {
+            "...GGG...", "..GGGGG..", ".GGGGGGG.", "GGGGGGGGG", ".GGGYGGG.",
+            "...YY....", "....YY...", "...YY....", "..Y......"};
+    private static final String[] FOG = {
+            ".........", "WWWWWWW..", ".........", "..WWWWWWW", ".........",
+            "WWWWWWW..", ".........", "..WWWWWWW", "........."};
+    private static final String[] BELL = {
+            "....O....", "..OOOOO..", ".OOOOOOO.", ".OOOOOOO.", ".OOOOOOO.",
+            ".OOOOOOO.", "OOOOOOOOO", ".........", "...OOO..."};
+    private static final Map<Character, Integer> ICON_COLORS = new HashMap<>();
+    static {
+        ICON_COLORS.put('Y', 0xFFFFC857);
+        ICON_COLORS.put('M', 0xFFF0E6C8);
+        ICON_COLORS.put('W', 0xFFD9D4CC);
+        ICON_COLORS.put('G', 0xFF8F8780);
+        ICON_COLORS.put('B', 0xFF6FA8DC);
+        ICON_COLORS.put('S', 0xFFFFFFFF);
+        ICON_COLORS.put('O', 0xFFFF9A6C);
+    }
+
+    private static final int CHIP_TEXT = 0xFFFF9A6C;
+    private static final long WEATHER_EVERY_MS = 30 * 60 * 1000, WEATHER_RETRY_MS = 5 * 60 * 1000;
+    private static final long STATUS_EVERY_MS = 15 * 1000;
 
     private class ClawdEngine extends Engine {
         private final Handler handler = new Handler(Looper.getMainLooper());
         private final Runnable frame = this::drawFrame;
         private boolean visible;
         private int width, height;
+
+        // status chip state
+        private int battery = -1;
+        private boolean charging;
+        private long nextAlarm;          // epoch ms, 0 = none
+        private long lastStatusPoll;
+        private volatile boolean hasWeather, isDay = true, fetching;
+        private volatile int tempC, weatherCode;
+        private volatile long lastWeatherAttempt;
+        private SharedPreferences prefs;
 
         private final Paint fill = new Paint();
         private final Paint glow = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -101,6 +165,76 @@ public class ClawdClockWallpaper extends WallpaperService {
                     Shader.TileMode.CLAMP));
             glow.setColor(0xFFFF9A6C);
             glow.setMaskFilter(new BlurMaskFilter(20, BlurMaskFilter.Blur.NORMAL));
+
+            prefs = getSharedPreferences("weather", MODE_PRIVATE);
+            if (prefs.contains("temp")) {
+                tempC = prefs.getInt("temp", 0);
+                weatherCode = prefs.getInt("code", 0);
+                isDay = prefs.getBoolean("day", true);
+                hasWeather = true;
+                // cached weather is shown immediately but still refreshed if stale
+                lastWeatherAttempt = prefs.getLong("at", 0) - System.currentTimeMillis() + SystemClock.elapsedRealtime();
+            } else {
+                lastWeatherAttempt = -WEATHER_EVERY_MS;
+            }
+        }
+
+        private void pollStatus() {
+            long now = SystemClock.elapsedRealtime();
+            if (now - lastStatusPoll >= STATUS_EVERY_MS || battery < 0) {
+                lastStatusPoll = now;
+                BatteryManager bm = (BatteryManager) getSystemService(BATTERY_SERVICE);
+                if (bm != null) {
+                    battery = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY);
+                    charging = bm.isCharging();
+                }
+                AlarmManager am = (AlarmManager) getSystemService(ALARM_SERVICE);
+                AlarmManager.AlarmClockInfo next = am != null ? am.getNextAlarmClock() : null;
+                nextAlarm = next != null ? next.getTriggerTime() : 0;
+            }
+            long since = now - lastWeatherAttempt;
+            boolean due = since >= WEATHER_EVERY_MS || (!hasWeather && since >= WEATHER_RETRY_MS);
+            if (due && !fetching) {
+                fetching = true;
+                lastWeatherAttempt = now;
+                new Thread(this::fetchWeather, "clawd-weather").start();
+            }
+        }
+
+        /** Rough location from the public IP, then current conditions from Open-Meteo. */
+        private void fetchWeather() {
+            try {
+                JSONObject geo = new JSONObject(get("https://get.geojs.io/v1/ip/geo.json"));
+                String lat = geo.getString("latitude"), lon = geo.getString("longitude");
+                JSONObject cur = new JSONObject(get("https://api.open-meteo.com/v1/forecast?latitude=" + lat
+                        + "&longitude=" + lon + "&current=temperature_2m,weather_code,is_day"))
+                        .getJSONObject("current");
+                tempC = (int) Math.round(cur.getDouble("temperature_2m"));
+                weatherCode = cur.getInt("weather_code");
+                isDay = cur.getInt("is_day") == 1;
+                hasWeather = true;
+                prefs.edit().putInt("temp", tempC).putInt("code", weatherCode).putBoolean("day", isDay)
+                        .putLong("at", System.currentTimeMillis()).apply();
+            } catch (Exception ignored) {
+                // offline or service down: keep the last known weather, retry later
+                if (hasWeather) lastWeatherAttempt -= WEATHER_EVERY_MS - WEATHER_RETRY_MS;
+            } finally {
+                fetching = false;
+            }
+        }
+
+        private String get(String url) throws Exception {
+            HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+            conn.setConnectTimeout(10000);
+            conn.setReadTimeout(10000);
+            try (InputStream in = conn.getInputStream()) {
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                byte[] buf = new byte[4096];
+                for (int n; (n = in.read(buf)) > 0; ) out.write(buf, 0, n);
+                return out.toString("UTF-8");
+            } finally {
+                conn.disconnect();
+            }
         }
 
         @Override
@@ -161,6 +295,9 @@ public class ClawdClockWallpaper extends WallpaperService {
             // ground shadow
             rect(c, 230, 1792, 620, 16, 0x73000000);
             rect(c, 270, 1808, 540, 10, 0x40000000);
+
+            pollStatus();
+            drawChips(c, now);
 
             // pixel "bob": up 10 units for the second half of a 2.4s cycle
             c.save();
@@ -267,6 +404,78 @@ public class ClawdClockWallpaper extends WallpaperService {
             float ey = 1400 + (100 - eh) / 2;
             rect(c, 340, ey, 50, eh, 0xFF14100E);
             rect(c, 690, ey, 50, eh, 0xFF14100E);
+        }
+
+        private void drawChips(Canvas c, Calendar now) {
+            final float u = 6, cy = 1894;
+            float[] xs = {45, 390, 735};
+            for (float x : xs) {
+                fill.setColor(0xFF3A332E);
+                c.drawPath(poly(x + 8, 1846, x + 292, 1846, x + 292, 1854, x + 300, 1854, x + 300, 1934,
+                        x + 292, 1934, x + 292, 1942, x + 8, 1942, x + 8, 1934, x, 1934, x, 1854, x + 8, 1854), fill);
+                rect(c, x + 10, 1856, 280, 76, 0xFF140E0B);
+            }
+
+            // weather
+            String temp = hasWeather ? tempC + "\u00b0C" : "--\u00b0C";
+            drawIconChip(c, xs[0], cy, u, weatherIcon(), temp);
+
+            // battery: 11x6 body + 1x2 terminal, fill in 9 columns
+            String pct = battery >= 0 ? battery + "%" : "--%";
+            float tw = textWidth(pct, u), total = 12 * u + 3 * u + tw;
+            float bx = xs[1] + (300 - total) / 2, by = cy - 3 * u;
+            int edge = 0xFFC9876A, level = battery <= 20 && battery >= 0 ? 0xFFE5534B : CHIP_TEXT;
+            rect(c, bx, by, 11 * u, u, edge);
+            rect(c, bx, by + 5 * u, 11 * u, u, edge);
+            rect(c, bx, by, u, 6 * u, edge);
+            rect(c, bx + 10 * u, by, u, 6 * u, edge);
+            rect(c, bx + 11 * u, by + 2 * u, u, 2 * u, edge);
+            int cols = battery > 0 ? Math.max(1, Math.round(battery * 9 / 100f)) : 0;
+            rect(c, bx + u, by + u, cols * u, 4 * u, level);
+            if (charging) {
+                int[][] bolt = {{5, 0}, {4, 1}, {5, 1}, {3, 2}, {4, 2}, {3, 3}};
+                for (int[] b : bolt) rect(c, bx + (1 + b[0]) * u, by + (1 + b[1]) * u, u, u, 0xFFFFC857);
+            }
+            pixText(c, pct, bx + 15 * u, cy - 2.5f * u, u, CHIP_TEXT, false);
+
+            // next alarm
+            String alarm = "OFF";
+            if (nextAlarm > 0) {
+                Calendar a = Calendar.getInstance();
+                a.setTimeInMillis(nextAlarm);
+                alarm = nextAlarm - now.getTimeInMillis() < 24 * 3600 * 1000L
+                        ? String.format("%02d:%02d", a.get(Calendar.HOUR_OF_DAY), a.get(Calendar.MINUTE))
+                        : DAYS[a.get(Calendar.DAY_OF_WEEK) - 1];
+            }
+            drawIconChip(c, xs[2], cy, u, BELL, alarm);
+        }
+
+        private String[] weatherIcon() {
+            int w = weatherCode;
+            if (!hasWeather) return CLOUD;
+            if (w == 0) return isDay ? SUN : MOON;
+            if (w <= 2) return isDay ? PARTLY : MOON;
+            if (w == 3) return CLOUD;
+            if (w == 45 || w == 48) return FOG;
+            if ((w >= 71 && w <= 77) || w == 85 || w == 86) return SNOW;
+            if (w >= 95) return STORM;
+            return RAIN;
+        }
+
+        private void drawIconChip(Canvas c, float chipX, float cy, float u, String[] icon, String text) {
+            float total = 9 * u + 3 * u + textWidth(text, u);
+            float x = chipX + (300 - total) / 2, y = cy - 4.5f * u;
+            for (int r = 0; r < icon.length; r++) {
+                for (int k = 0; k < icon[r].length(); k++) {
+                    Integer col = ICON_COLORS.get(icon[r].charAt(k));
+                    if (col != null) rect(c, x + k * u, y + r * u, u, u, col);
+                }
+            }
+            pixText(c, text, x + 12 * u, cy - 2.5f * u, u, CHIP_TEXT, false);
+        }
+
+        private float textWidth(String str, float s) {
+            return str.length() * 6 * s - s;
         }
 
         private void pixText(Canvas c, String str, float x, float y, float s, int color, boolean alignRight) {
